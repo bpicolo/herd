@@ -95,8 +95,8 @@ class DigitalOceanClusterManager(ClusterManager):
     def parse_node_size_config(self, cfg):
         return {
             'min_cores': cfg.get('min_cores', 1),
-            'min_ram': cfg.get('min_ram', 512),
-            'min_disk': cfg.get('min_disk', 20),
+            'min_ram': cfg.get('min_ram', 256),
+            'min_disk': cfg.get('min_disk', 10),
             'max_monthly_cost': cfg.get('max_monthly_cost', 20),
         }
 
@@ -192,6 +192,40 @@ class DigitalOceanClusterManager(ClusterManager):
             return
 
         self.destroy_nodes(nodes_in_cluster)
+
+    def cluster_info(self, cluster_name):
+        cluster_name_scheme = '{}\d+-'.format(cluster_name)
+        nodes_in_cluster = [
+            n for n in self.nodes_list
+            if re.match(cluster_name_scheme, n.name)
+        ]
+
+        if not nodes_in_cluster:
+            print("No nodes found in cluster {}".format(cluster_name))
+            return
+
+        return [
+            {
+                'name': node.name,
+                'public_ips': node.ip_address,
+                'private_ips': node.private_ip_address,
+                'status': node.status
+            }
+            for node in nodes_in_cluster
+        ]
+
+    def node_names(self, cluster_name):
+        return [c['name'] for c in self.cluster_info(cluster_name)]
+
+    def ip_for_node(self, node_name):
+        return next(
+            (
+                node.ip_address
+                for node in self.nodes_list
+                if node.name == node_name
+            ),
+            None
+        )
 
     def sync_cluster(self, cluster_name, cluster_config):
         print("Syncing cluster: {}".format(cluster_name))

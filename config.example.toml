@@ -1,3 +1,8 @@
+[ssh]
+path = "/path/to/rsaprivatekey"
+password = 'rsa_key_passphrase'
+
+
 [providers.digitalocean]
 token = "MY_PRIVATE_TOKEN"
 
