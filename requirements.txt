@@ -1,0 +1,8 @@
+cached-property==1.2.0
+ecdsa==0.13
+paramiko==1.15.2
+pycrypto==2.6.1
+python-digitalocean==1.5
+pytoml==0.1.2
+requests==2.6.2
+toml==0.9.0

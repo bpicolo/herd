@@ -1,0 +1,15 @@
+[providers.digitalocean]
+token = "MY_PRIVATE_TOKEN"
+
+
+[clusters.app]
+provider = 'digitalocean'
+server_count = 2
+min_cores = 1
+min_ram = 515
+min_disk_space = 10
+max_monthly_cost = 20
+ssh_keys = []
+region = 'sfo1'
+image = 'ubuntu-14-04-x64'
+
