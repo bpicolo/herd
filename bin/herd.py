@@ -3,8 +3,8 @@ import sys
 
 import pytoml
 
-from tinyherd.cluster import cluster_manager_for_provider
-from tinyherd.handler import NodeHandler
+from herd.cluster import cluster_manager_for_provider
+from herd.handler import NodeHandler
 
 
 def load_config(config_path):

@@ -1,14 +1,14 @@
 from setuptools import setup
 
 setup(
-    name="tinyherd",
+    name="herd",
     version='0.0.1',
     license="MIT",
     description="Small cluster automation",
     author="Ben Picolo",
     author_email="be.picolo@gmail.com",
-    url="https://github.com/bpicolo/tinyherd",
-    packages=["tinyherd"],
+    url="https://github.com/bpicolo/herd",
+    packages=["herd"],
     classifiers=[
         "Intended Audience :: Developers",
         "Topic :: Software Development :: Libraries :: Python Modules",

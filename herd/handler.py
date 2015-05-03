@@ -1,6 +1,6 @@
 import paramiko
 
-from tinyherd.command import UbuntuCommand
+from herd.command import UbuntuCommand
 
 
 class NodeHandler:
