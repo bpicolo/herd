@@ -1,6 +1,6 @@
 
 
-class UbuntuCommand:
+class UbuntuCommand(object):
 
     @staticmethod
     def update():

@@ -3,14 +3,14 @@ import paramiko
 from herd.command import UbuntuCommand
 
 
-class NodeHandler:
+class NodeHandler(object):
 
     def __init__(self, config, cluster_manager):
         self.cluster_manager = cluster_manager
         self.config = config['ssh']
         self._connections = {}
         self.client = paramiko.SSHClient()
-        # Not super safe but convenient for now
+        # Not super safe but convenient for now.
         self.client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
     def connect_to_node(self, node_name):
@@ -33,7 +33,7 @@ class NodeHandler:
 
     def print_stdout(self, stdout):
         for line in stdout:
-            print(line, end="")
+            print(line, end="")  # flake8: noqa - Flake8 doesn't understand -_-
 
     def execute(self, cluster, command):
         """Execute an arbitrary command on the cluster"""

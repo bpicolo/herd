@@ -6,11 +6,11 @@ import digitalocean
 
 
 # Represents the configuration options to create a server
-class ServerConfig:
+class ServerConfig(object):
     pass
 
 
-class ClusterManager:
+class ClusterManager(object):
 
     def best_node_match(self):
         raise NotImplementedError("")
