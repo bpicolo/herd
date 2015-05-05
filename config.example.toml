@@ -1,19 +1,28 @@
+[herd]
+# Number of conccurent ssh connections Herd can create from current
+# machine to any combination of other machines, default: 1
+concurrent_connections = 4
+
+# Required if you want Herd to be able to access your nodes
 [ssh]
-path = "/path/to/rsaprivatekey"
-password = 'rsa_key_passphrase'
+path = "/path/to/rsaprivatekey"  # RSA key path
+password = 'rsa_key_passphrase'  # RSA key passphrase
 
-
+# At least one provider must be configured...in theory
 [providers.digitalocean]
-token = "MY_PRIVATE_TOKEN"
+token = "MY_PRIVATE_TOKEN"  # Digital ocean API token
 
-
+# Configure a cluster. Configure as many as you want in any combination!
 [clusters.app]
-provider = 'digitalocean'
-server_count = 2
-min_cores = 1
-min_ram = 515
-min_disk_space = 10
-max_monthly_cost = 20
+provider = 'digitalocean'  # The provider you wish to use for this cluster
+server_count = 2  # Number of servers to spawn / keep up
+min_cores = 1  # Minimum number of cores per server
+min_ram = 515  # Minimum quantity of ram per server (MB)
+min_disk_space = 10  # Minimum disk space per server (GB)
+max_monthly_cost = 20  # Most you want to pay per month PER SERVER
+# SSH key fingerprints for keys allowed to access node
+# Note: Herd does NOT support password-based authentication, so you probably
+# need at least one SSH key here, i.e. the one you expect Herd to use
 ssh_keys = []
 region = 'sfo1'
 image = 'ubuntu-14-04-x64'

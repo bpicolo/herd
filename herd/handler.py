@@ -1,93 +1,103 @@
+from __future__ import print_function  # Sadly, fixes a flake8 issue
+
+import time
+from collections import namedtuple
+from concurrent import futures
+
 import paramiko
 
-from herd.command import UbuntuCommand
+import herd.config
+from herd.cluster import manager_for_cluster
 
 
-class NodeHandler(object):
+class ClusterExecutor(namedtuple('ClusterExecutor', [])):
 
-    def __init__(self, config, cluster_manager):
-        self.cluster_manager = cluster_manager
-        self.config = config['ssh']
-        self._connections = {}
-        self.client = paramiko.SSHClient()
-        # Not super safe but convenient for now.
-        self.client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    @staticmethod
+    def wait_for_ready(manager, cluster_name):
+        cluster_status = manager.cluster_status(cluster_name)
+        waited = False
+        while(len(cluster_status['new']) > 0):
+            waited = True
+            print("Waiting for nodes to come online: {}".format(
+                [n.name for n in cluster_status['new']]
+            ))
+            time.sleep(10)
+            cluster_status = manager.cluster_status(cluster_name)
 
-    def connect_to_node(self, node_name):
-        self._connections[node_name] = paramiko.SSHClient()
-        self._connections[node_name].set_missing_host_key_policy(
-            paramiko.AutoAddPolicy(),
-        )
-        self._connections[node_name].connect(
-            self.cluster_manager.ip_for_node(node_name),
-            key_filename=self.config['path'],
-            password=self.config['password'],
+        if waited:
+            print("Giving the cluster 15 seconds to cool down")
+            time.sleep(15)
+
+        if len(cluster_status['off']) or len(cluster_status['archive']):
+            nodes = [
+                n.name
+                for n in cluster_status['off'] + cluster_status['archive']
+            ]
+            print(
+                "WARNING: Some nodes are NOT online. The current commands ",
+                "will not be run for them"
+            )
+            print("Offline nodes: {}".format(nodes))
+
+    @staticmethod
+    def execute(command, config, manager, node):
+        handler = NodeHandler(config, manager, node)
+        handler.execute(command)
+
+    @staticmethod
+    def execute_parallel(command, config, cluster, max_workers=None):
+        if not max_workers:
+            max_workers = herd.config.parallel_connections(config) or 1
+
+        manager = manager_for_cluster(config, cluster)
+        ClusterExecutor.wait_for_ready(manager, cluster)
+        nodes = manager.node_names(cluster)
+
+        if not nodes:
+            return
+
+        with futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_node = {
+                executor.submit(ClusterExecutor.execute, command, config, manager, node): node
+                for node in nodes
+            }
+            for future in futures.as_completed(future_to_node):
+                print("COMPLETED {} on {}".format(command, future_to_node[future]))
+
+
+class NodeHandler(namedtuple(
+    'NodeHandler',
+    ['client', 'cluster_manager', 'node_name'],
+)):
+    """
+    A NodeHandler executes SSH commands against a machine.
+
+    It's designed to be thread safe to run ssh commands in parallel. Turns
+    out being immutable makes parallel super crazily easy
+
+    :client: a paramiko SSHClient connection
+    :cluster_manager: cluster manager for node
+    :node_name: node name of node to talk to
+    """
+
+    def __new__(cls, config, cluster_manager, node_name):
+        client = paramiko.SSHClient()
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        client.connect(
+            cluster_manager.ip_for_node(node_name),
+            key_filename=config['ssh']['path'],
+            password=config['ssh']['password'],
             username='root',  # TODO this is clearly suboptimal
         )
 
-    def connection(self, node_name):
-        if 'node_name' not in self._connections:
-            self.connect_to_node(node_name)
-
-        return self._connections[node_name]
+        return super(NodeHandler, cls).__new__(cls, client, cluster_manager, node_name)
 
     def print_stdout(self, stdout):
         for line in stdout:
-            print(line, end="")  # flake8: noqa - Flake8 doesn't understand -_-
+            print("NODE {}: {}".format(self.node_name, line), end="")
 
-    def execute(self, cluster, command):
+    def execute(self, command):
         """Execute an arbitrary command on the cluster"""
-        for node_name in self.cluster_manager.node_names(cluster):
-            print("Executing \"{}\" on {}".format(command, cluster))
-            connection = self.connection(node_name)
-            _, stdout, stderr = connection.exec_command(command)
-
-            self.print_stdout(stdout)
-
-    def install(self, cluster, program):
-        for node_name in self.cluster_manager.node_names(cluster):
-            print("Installing {} on {}".format(program, node_name))
-            connection = self.connection(node_name)
-            _, stdout, stderr = connection.exec_command(UbuntuCommand.install(program))
-
-            self.print_stdout(stdout)
-
-    def uninstall(self, cluster, program):
-        for node_name in self.cluster_manager.node_names(cluster):
-            print("Uninstalling {} on {}".format(program, node_name))
-            connection = self.connection(node_name)
-            _, stdout, stderr = connection.exec_command(UbuntuCommand.uninstall(program))
-
-            self.print_stdout(stdout)
-
-    def start(self, cluster, program):
-        for node_name in self.cluster_manager.node_names(cluster):
-            print("Starting {} on {}".format(program, node_name))
-            connection = self.connection(node_name)
-            _, stdout, stderr = connection.exec_command(UbuntuCommand.service_start(program))
-
-            self.print_stdout(stdout)
-
-    def stop(self, cluster, program):
-        for node_name in self.cluster_manager.node_names(cluster):
-            print("Stopping {} on {}".format(program, node_name))
-            connection = self.connection(node_name)
-            _, stdout, stderr = connection.exec_command(UbuntuCommand.service_stop(program))
-
-            self.print_stdout(stdout)
-
-    def update(self, cluster):
-        for node_name in self.cluster_manager.node_names(cluster):
-            print("Updating {}".format(node_name))
-            connection = self.connection(node_name)
-            _, stdout, stderr = connection.exec_command(UbuntuCommand.update())
-
-            self.print_stdout(stdout)
-
-    def upgrade(self, cluster):
-        for node_name in self.cluster_manager.node_names(cluster):
-            print("Updating {}".format(node_name))
-            connection = self.connection(node_name)
-            _, stdout, stderr = connection.exec_command(UbuntuCommand.upgrade())
-
-            self.print_stdout(stdout)
+        print("Executing \"{}\" on {}".format(command, self.node_name))
+        _, stdout, stderr = self.client.exec_command(command)
+        self.print_stdout(stdout)

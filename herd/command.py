@@ -1,27 +1,42 @@
 
-
 class UbuntuCommand(object):
 
     @staticmethod
-    def update():
-        return 'apt-get update -y'
+    def command(command, sudo=False):
+        return '{}{}'.format('sudo ' if sudo else '', command)
 
     @staticmethod
-    def upgrade():
-        return 'apt-get upgrade -y'
+    def update(sudo=False):
+        return UbuntuCommand.command('apt-get update -y', sudo)
 
     @staticmethod
-    def install(program_name):
-        return 'sudo apt-get install -y {}'.format(program_name)
+    def upgrade(sudo=False):
+        return UbuntuCommand.command('apt-get upgrade -y', sudo)
 
     @staticmethod
-    def uninstall(program_name):
-        return 'sudo apt-get remove -y {}'.format(program_name)
+    def install(program_name, sudo=False):
+        return UbuntuCommand.command(
+            'sudo apt-get install -y {}'.format(program_name),
+            sudo,
+        )
 
     @staticmethod
-    def service_start(service_name):
-        return 'service {} start'.format(service_name)
+    def uninstall(program_name, sudo=False):
+        return UbuntuCommand.command(
+            'sudo apt-get remove -y {}'.format(program_name),
+            sudo
+        )
 
     @staticmethod
-    def service_stop(service_stop):
-        return 'service {} start'.format(service_stop)
+    def service_start(service_name, sudo=False):
+        return UbuntuCommand.command(
+            'service {} start'.format(service_name),
+            sudo
+        )
+
+    @staticmethod
+    def service_stop(service_stop, sudo=False):
+        return UbuntuCommand.command(
+            'service {} start'.format(service_stop),
+            sudo
+        )

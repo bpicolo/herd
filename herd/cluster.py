@@ -133,6 +133,9 @@ class DigitalOceanClusterManager(ClusterManager):
 
         return next(iter(sorted(all_matching, key=attrgetter("price_monthly"))), None)
 
+    def rename_node(self, node, new_name):
+        node.rename(new_name)
+
     def launch_node(self, node_configuration):
         """
         :param size: digitalocean.Size.Size
@@ -158,6 +161,17 @@ class DigitalOceanClusterManager(ClusterManager):
         for node in nodes:
             self.destroy_node(node)
 
+    def node_in_cluster(self, cluster):
+        cluster_name_scheme = '{}\d+'.format(cluster)
+        return [
+            n for n in self.nodes_list
+            if re.match(cluster_name_scheme, n.name)
+        ]
+
+    def node_index(self, cluster_name, node_name):
+        cluster_name_scheme = '{}(\d+)'.format(cluster_name)
+        return int(re.findall(cluster_name_scheme, node_name)[0])
+
     @cached_property
     def nodes_list(self):
         return self._nodes_list()
@@ -181,11 +195,7 @@ class DigitalOceanClusterManager(ClusterManager):
         pass
 
     def drop_cluster(self, cluster_name):
-        cluster_name_scheme = '{}\d+-'.format(cluster_name)
-        nodes_in_cluster = [
-            n for n in self.nodes_list
-            if re.match(cluster_name_scheme, n.name)
-        ]
+        nodes_in_cluster = self.node_in_cluster(cluster_name)
 
         if not nodes_in_cluster:
             print("No nodes found in cluster {}, taking no action.".format(cluster_name))
@@ -194,11 +204,7 @@ class DigitalOceanClusterManager(ClusterManager):
         self.destroy_nodes(nodes_in_cluster)
 
     def cluster_info(self, cluster_name):
-        cluster_name_scheme = '{}\d+-'.format(cluster_name)
-        nodes_in_cluster = [
-            n for n in self.nodes_list
-            if re.match(cluster_name_scheme, n.name)
-        ]
+        nodes_in_cluster = self.node_in_cluster(cluster_name)
 
         if not nodes_in_cluster:
             print("No nodes found in cluster {}".format(cluster_name))
@@ -213,6 +219,25 @@ class DigitalOceanClusterManager(ClusterManager):
             }
             for node in nodes_in_cluster
         ]
+
+    def cluster_status(self, cluster_name):
+        nodes = self._nodes_list()
+
+        def filter_nodes(status):
+            def filter_node(node):
+                return (
+                    node.status == status and
+                    re.match('{}\d+'.format(cluster_name), node.name)
+                )
+
+            return filter_node
+
+        return {
+            'active': list(filter(filter_nodes('active'), nodes)),
+            'new': list(filter(filter_nodes('new'), nodes)),
+            'off': list(filter(filter_nodes('off'), nodes)),
+            'archive': list(filter(filter_nodes('archive'), nodes)),
+        }
 
     def node_names(self, cluster_name):
         return [c['name'] for c in self.cluster_info(cluster_name)]
@@ -229,49 +254,50 @@ class DigitalOceanClusterManager(ClusterManager):
 
     def sync_cluster(self, cluster_name, cluster_config):
         print("Syncing cluster: {}".format(cluster_name))
-        region = cluster_config.get('region', self.default_region())
-        cluster_name_scheme = '{}\d+-{}'.format(cluster_name, region)
-        nodes_in_cluster = [
-            n for n in self.nodes_list
-            if re.match(cluster_name_scheme, n.name)
-        ]
-
+        nodes_in_cluster = self.node_in_cluster(cluster_name)
         node_size_config = self.parse_node_size_config(cluster_config)
         node_size = self.best_node_size_match(**node_size_config)
+
         if not node_size:
             raise ClusterSyncException(
                 (
                     "No valid node was found matching cores: {min_cores}, "
                     "ram: {min_ram}mb, disk: {min_disk}gb, cost: ${max_monthly_cost}"
-                ).format(
-                    **node_size_config
-                )
+                ).format(**node_size_config)
             )
 
         nodes_to_sync = [
-            '{}{}-{}'.format(cluster_name, i, region)
+            '{}{}'.format(cluster_name, i)
             for i in range(1, 1 + cluster_config['server_count'])
         ]
 
-        nodes_to_destroy = [
+        wrong_size_nodes = [
             node for node in nodes_in_cluster if not
-            self.size_meets_requirements(self.size_for_slug(node.size_slug), **node_size_config)
+            self.size_meets_requirements(
+                self.size_for_slug(node.size_slug), **node_size_config
+            )
         ]
-
-        if nodes_to_destroy:
+        if wrong_size_nodes:
             print("Destroying nodes that don't meet new size requirements")
-            self.destroy_nodes(nodes_to_destroy)
+            self.destroy_nodes(wrong_size_nodes)
 
-        destroyed_node_names = set(node.name for node in nodes_to_destroy)
-        start_node_names = set(node.name for node in nodes_in_cluster)
+        wrong_size_node_names = set(node.name for node in wrong_size_nodes)
+
+        extra_nodes = [
+            node for node in nodes_in_cluster if not
+            self.node_index(cluster_name, node.name) < cluster_config['server_count'] + 1
+        ]
+        self.destroy_nodes(extra_nodes)
+
         nodes_to_create = (
-            set(nodes_to_sync) - set(start_node_names) |
-            set(destroyed_node_names)
+            set(nodes_to_sync) -
+            set(node.name for node in nodes_in_cluster) |
+            set(wrong_size_node_names)
         )
         for node_name in nodes_to_create:
             node_configuration = DigitalOceanNodeConfig(
                 name=node_name,
-                region=region,
+                region=cluster_config.get('region', self.default_region()),
                 size=self.best_node_size_match(**node_size_config).slug,
                 image=cluster_config.get('image', None),
                 ssh_keys=cluster_config.get('ssh_keys', None),
@@ -298,3 +324,9 @@ def cluster_manager_for_provider(provider):
     if provider not in PROVIDER_TO_CLUSTER_MANAGER:
         raise ValueError('provider must be one of {}'.format(PROVIDER_TO_CLUSTER_MANAGER.keys()))
     return PROVIDER_TO_CLUSTER_MANAGER[provider]
+
+
+def manager_for_cluster(config, cluster_name):
+    return cluster_manager_for_provider(
+        config['clusters'][cluster_name]['provider']
+    )(config)

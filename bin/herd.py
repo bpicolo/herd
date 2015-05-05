@@ -4,7 +4,9 @@ import sys
 import pytoml
 
 from herd.cluster import cluster_manager_for_provider
-from herd.handler import NodeHandler
+from herd.cluster import manager_for_cluster
+from herd.command import UbuntuCommand
+from herd.handler import ClusterExecutor
 
 
 def load_config(config_path):
@@ -42,8 +44,7 @@ def sync_cluster(args):
     args = parser.parse_args(args)
 
     config = load_config(args.config)
-    manager = cluster_manager_for_provider(config[args.cluster]['provider'])(config)
-    manager.sync()
+    manager_for_cluster(config, args.cluster).sync()
 
 
 def cluster_info(args):
@@ -53,7 +54,7 @@ def cluster_info(args):
     args = parser.parse_args(args)
 
     config = load_config(args.config)
-    manager = cluster_manager_for_provider(config['clusters'][args.cluster]['provider'])(config)
+    manager = manager_for_cluster(config, args.cluster)
     print(manager.cluster_info(args.cluster))
 
 
@@ -65,9 +66,7 @@ def cluster_install(args):
     args = parser.parse_args(args)
 
     config = load_config(args.config)
-    manager = cluster_manager_for_provider(config['clusters'][args.cluster]['provider'])(config)
-    handler = NodeHandler(config, manager)
-    handler.install(args.cluster, args.program)
+    ClusterExecutor.execute_parallel(UbuntuCommand.install(args.program), config, args.cluster)
 
 
 def cluster_uninstall(args):
@@ -78,9 +77,9 @@ def cluster_uninstall(args):
     args = parser.parse_args(args)
 
     config = load_config(args.config)
-    manager = cluster_manager_for_provider(config['clusters'][args.cluster]['provider'])(config)
-    handler = NodeHandler(config, manager)
-    handler.uninstall(args.cluster, args.program)
+    ClusterExecutor.execute_parallel(
+        UbuntuCommand.uninstall(args.program), config, args.cluster
+    )
 
 
 def postsync(args):
@@ -91,10 +90,8 @@ def postsync(args):
     args = parser.parse_args(args)
 
     config = load_config(args.config)
-    manager = cluster_manager_for_provider(config['clusters'][args.cluster]['provider'])(config)
-    handler = NodeHandler(config, manager)
-    handler.update(args.cluster)
-    handler.upgrade(args.cluster)
+    ClusterExecutor.execute_parallel(UbuntuCommand.update(sudo=True), config, args.cluster)
+    ClusterExecutor.execute_parallel(UbuntuCommand.upgrade(sudo=True), config, args.cluster)
 
 
 def start(args):
@@ -105,9 +102,9 @@ def start(args):
     args = parser.parse_args(args)
 
     config = load_config(args.config)
-    manager = cluster_manager_for_provider(config['clusters'][args.cluster]['provider'])(config)
-    handler = NodeHandler(config, manager)
-    handler.start(args.cluster, args.program)
+    ClusterExecutor.execute_parallel(
+        UbuntuCommand.service_start(args.program), config, args.cluster
+    )
 
 
 def stop(args):
@@ -118,9 +115,9 @@ def stop(args):
     args = parser.parse_args(args)
 
     config = load_config(args.config)
-    manager = cluster_manager_for_provider(config['clusters'][args.cluster]['provider'])(config)
-    handler = NodeHandler(config, manager)
-    handler.stop(args.cluster, args.program)
+    ClusterExecutor.execute_parallel(
+        UbuntuCommand.service_stop(args.program), config, args.cluster
+    )
 
 
 def execute(args):
@@ -131,9 +128,7 @@ def execute(args):
     args = parser.parse_args(args)
 
     config = load_config(args.config)
-    manager = cluster_manager_for_provider(config['clusters'][args.cluster]['provider'])(config)
-    handler = NodeHandler(config, manager)
-    handler.execute(args.cluster, " ".join(args.command))
+    ClusterExecutor.execute_parallel(" ".join(args.command), config, args.cluster)
 
 
 action_to_handler = {
