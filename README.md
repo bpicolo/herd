@@ -17,6 +17,7 @@ one good strategy for everything, to eliminate complicated configs.
 
 * pip install herd
 * Create a basic config file:
+
         [herd]
         concurrent_connections = 4
 
