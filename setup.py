@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name='herd',
-    version='0.0.2',
+    version='0.0.2.dev1',
     license='MIT',
     description='Small cluster automation',
     author='Ben Picolo',
