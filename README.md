@@ -22,16 +22,16 @@ one good strategy for everything, to eliminate complicated configs.
         concurrent_connections = 4
 
         [ssh]
-        path = "/path/to/rsaprivatekey"  # RSA key Herd shoud use
-        password = 'rsa_key_passphrase'  # RSA key passphrase
+        path = "/path/to/rsaprivatekey"
+        password = 'rsa_key_passphrase'
 
         [providers.digitalocean]
-        token = "MY_PRIVATE_TOKEN"  # Digital ocean API token
+        token = "MY_PRIVATE_TOKEN"
 
         [clusters.cluster_name]
-        provider = 'digitalocean'  # The provider you wish to use for this cluster
-        server_count = 1  # Number of servers to spawn / keep up
-        max_monthly_cost = 5  # Most you want to pay per month PER SERVER
+        provider = 'digitalocean'
+        server_count = 1
+        max_monthly_cost = 5
         ssh_keys = ["RSA_KEY_FINGERPRINT"]
         region = 'sfo1'
         image = 'ubuntu-14-04-x64'
