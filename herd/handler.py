@@ -5,6 +5,7 @@ from collections import namedtuple
 from concurrent import futures
 
 import paramiko
+from scp import SCPClient
 
 import herd.config
 from herd.cluster import manager_for_cluster
@@ -42,10 +43,17 @@ class ClusterExecutor(namedtuple('ClusterExecutor', [])):
     @staticmethod
     def execute(command, config, manager, node):
         handler = NodeHandler(config, manager, node)
+        print("Executing {} on {}".format(command, node))
         handler.execute(command)
 
     @staticmethod
-    def execute_parallel(command, config, cluster, max_workers=None):
+    def copy(src, dest, config, manager, node, recursive=False):
+        handler = NodeHandler(config, manager, node)
+        print("Copying {} to {} on {}".format(src, dest, node))
+        handler.copy(src, dest, recursive)
+
+    @staticmethod
+    def execute_parallel(config, command, cluster, max_workers=None):
         if not max_workers:
             max_workers = herd.config.parallel_connections(config) or 1
 
@@ -63,6 +71,29 @@ class ClusterExecutor(namedtuple('ClusterExecutor', [])):
             }
             for future in futures.as_completed(future_to_node):
                 print("COMPLETED {} on {}".format(command, future_to_node[future]))
+
+    @staticmethod
+    def copy_parallel(config, src, dest, cluster, max_workers=None, recursive=False):
+        if not max_workers:
+            max_workers = herd.config.parallel_connections(config) or 1
+
+        manager = manager_for_cluster(config, cluster)
+        ClusterExecutor.wait_for_ready(manager, cluster)
+        nodes = manager.node_names(cluster)
+
+        if not nodes:
+            return
+
+        with futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_node = {
+                executor.submit(
+                    ClusterExecutor.copy, src, dest,
+                    config, manager, node, recursive=recursive
+                ): node
+                for node in nodes
+            }
+            for future in futures.as_completed(future_to_node):
+                print("COMPLETED copy {} to {} on {}".format(src, dest, future_to_node[future]))
 
 
 class NodeHandler(namedtuple(
@@ -101,3 +132,8 @@ class NodeHandler(namedtuple(
         print("Executing \"{}\" on {}".format(command, self.node_name))
         _, stdout, stderr = self.client.exec_command(command)
         self.print_stdout(stdout)
+
+    def copy(self, src, dest, recursive=False):
+        # Context manager doesnt work properly? try later -_-
+        scp = SCPClient(self.client.get_transport())
+        scp.put(src, dest, recursive=recursive)

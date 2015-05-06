@@ -21,7 +21,8 @@ setup(
         'cached-property',
         'paramiko',
         'python-digitalocean',
-        'pytoml'
+        'pytoml',
+        'scp'
     ],
     scripts=[
         'bin/herd',

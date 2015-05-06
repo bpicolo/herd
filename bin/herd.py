@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-
 import argparse
 import sys
 
@@ -68,7 +67,7 @@ def cluster_install(args):
     args = parser.parse_args(args)
 
     config = load_config(args.config)
-    ClusterExecutor.execute_parallel(UbuntuCommand.install(args.program), config, args.cluster)
+    ClusterExecutor.execute_parallel(config, UbuntuCommand.install(args.program), args.cluster)
 
 
 def cluster_uninstall(args):
@@ -80,7 +79,7 @@ def cluster_uninstall(args):
 
     config = load_config(args.config)
     ClusterExecutor.execute_parallel(
-        UbuntuCommand.uninstall(args.program), config, args.cluster
+        config, UbuntuCommand.uninstall(args.program), args.cluster
     )
 
 
@@ -92,8 +91,8 @@ def postsync(args):
     args = parser.parse_args(args)
 
     config = load_config(args.config)
-    ClusterExecutor.execute_parallel(UbuntuCommand.update(sudo=True), config, args.cluster)
-    ClusterExecutor.execute_parallel(UbuntuCommand.upgrade(sudo=True), config, args.cluster)
+    ClusterExecutor.execute_parallel(config, UbuntuCommand.update(sudo=True), args.cluster)
+    ClusterExecutor.execute_parallel(config, UbuntuCommand.upgrade(sudo=True), args.cluster)
 
 
 def start(args):
@@ -105,7 +104,7 @@ def start(args):
 
     config = load_config(args.config)
     ClusterExecutor.execute_parallel(
-        UbuntuCommand.service_start(args.program), config, args.cluster
+        config, UbuntuCommand.service_start(args.program), args.cluster
     )
 
 
@@ -118,7 +117,7 @@ def stop(args):
 
     config = load_config(args.config)
     ClusterExecutor.execute_parallel(
-        UbuntuCommand.service_stop(args.program), config, args.cluster
+        config, UbuntuCommand.service_stop(args.program), args.cluster
     )
 
 
@@ -130,7 +129,20 @@ def execute(args):
     args = parser.parse_args(args)
 
     config = load_config(args.config)
-    ClusterExecutor.execute_parallel(" ".join(args.command), config, args.cluster)
+    ClusterExecutor.execute_parallel(config, " ".join(args.command), args.cluster)
+
+
+def copy(args):
+    parser = argparse.ArgumentParser(description='Install program on all nodes in a luster')
+    parser.add_argument('cluster', action='store', help='Name of cluster to stop program on')
+    parser.add_argument('src', action='store', help='Local path of file to copy')
+    parser.add_argument('dest', action='store', help='Remote destination for file')
+    parser.add_argument('-r', action='store_true', help='Copy recursively?')
+    parser.add_argument('--config', action='store', help='Specify path to config file', default="config.toml")
+    args = parser.parse_args(args)
+
+    config = load_config(args.config)
+    ClusterExecutor.copy_parallel(config, args.src, args.dest, args.cluster, recursive=args.r)
 
 
 action_to_handler = {
@@ -144,6 +156,7 @@ action_to_handler = {
     'stop': stop,
     'postsync': postsync,
     'exec': execute,
+    'copy': copy,
 }
 
 
