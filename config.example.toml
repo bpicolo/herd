@@ -1,6 +1,6 @@
 [herd]
 # Number of conccurent ssh connections Herd can create from current
-# machine to any combination of other machines, default: 1
+# machine to any combination of other machines, default: 4
 concurrent_connections = 4
 
 # Required if you want Herd to be able to access your nodes

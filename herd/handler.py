@@ -55,7 +55,7 @@ class ClusterExecutor(namedtuple('ClusterExecutor', [])):
     @staticmethod
     def execute_parallel(config, command, cluster, max_workers=None):
         if not max_workers:
-            max_workers = herd.config.parallel_connections(config) or 1
+            max_workers = herd.config.parallel_connections(config) or 4
 
         manager = manager_for_cluster(config, cluster)
         ClusterExecutor.wait_for_ready(manager, cluster)
@@ -75,7 +75,7 @@ class ClusterExecutor(namedtuple('ClusterExecutor', [])):
     @staticmethod
     def copy_parallel(config, src, dest, cluster, max_workers=None, recursive=False):
         if not max_workers:
-            max_workers = herd.config.parallel_connections(config) or 1
+            max_workers = herd.config.parallel_connections(config) or 4
 
         manager = manager_for_cluster(config, cluster)
         ClusterExecutor.wait_for_ready(manager, cluster)
