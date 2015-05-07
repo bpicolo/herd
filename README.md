@@ -19,6 +19,7 @@ one good strategy for everything, to eliminate complicated configs.
 
 * pip install herd
 * Create a basic config file:
+
         [ssh]
         path = "/path/to/rsaprivatekey"
         password = 'rsa_key_passphrase'
