@@ -4,10 +4,12 @@ import sys
 
 import pytoml
 
+from herd import command
 from herd.cluster import cluster_manager_for_provider
 from herd.cluster import manager_for_cluster
-from herd.command import UbuntuCommand
 from herd.handler import ClusterExecutor
+from herd.role import get_role_config
+from herd.task import TaskRunner
 
 
 def load_config(config_path):
@@ -15,18 +17,19 @@ def load_config(config_path):
         return pytoml.load(cfg)
 
 
-def sync_all_clusters(args):
+def start_all_clusters(args):
     parser = argparse.ArgumentParser(description='Cluster config runner')
     parser.add_argument('--config', action='store', help='Specify path to config file', default="config.toml")
     args = parser.parse_args(args)
 
     config = load_config(args.config)
-    for cluster in config['clusters'].values():
-        manager = cluster_manager_for_provider(cluster['provider'])(config)
-        manager.sync()
+    for cluster_name, cluster_config in config['clusters'].values():
+        cluster_manager_for_provider(cluster_config['provider'])(config).start(
+            cluster_name,
+        )
 
 
-def drop_cluster(args):
+def destroy_cluster(args):
     parser = argparse.ArgumentParser(description='Cluster config runner')
     parser.add_argument('cluster', action='store', help='Cluster name to destroy all nodes for')
     parser.add_argument('--config', action='store', help='Specify path to config file', default="config.toml")
@@ -35,22 +38,32 @@ def drop_cluster(args):
     config = load_config(args.config)
     for provider in config['providers']:
         manager = cluster_manager_for_provider(provider)(config)
-        manager.drop_cluster(args.cluster)
+        manager.destroy_cluster(args.cluster)
 
 
-def sync_cluster(args):
+def start_cluster(args):
     parser = argparse.ArgumentParser(description='Cluster config runner')
-    parser.add_argument('cluster', action='store', help='Name of cluster to sync')
+    parser.add_argument('cluster', action='store', help='Name of cluster to start')
     parser.add_argument('--config', action='store', help='Specify path to config file', default="config.toml")
     args = parser.parse_args(args)
 
     config = load_config(args.config)
-    manager_for_cluster(config, args.cluster).sync()
+    manager_for_cluster(config, args.cluster).start(args.cluster)
+
+
+def stop_cluster(args):
+    parser = argparse.ArgumentParser(description='Cluster config runner')
+    parser.add_argument('cluster', action='store', help='Name of cluster to stop')
+    parser.add_argument('--config', action='store', help='Specify path to config file', default="config.toml")
+    args = parser.parse_args(args)
+
+    config = load_config(args.config)
+    manager_for_cluster(config, args.cluster).stop(args.cluster)
 
 
 def cluster_info(args):
     parser = argparse.ArgumentParser(description='Cluster config runner')
-    parser.add_argument('cluster', action='store', help='Name of cluster to sync')
+    parser.add_argument('cluster', action='store', help='Name of cluster to get info for')
     parser.add_argument('--config', action='store', help='Specify path to config file', default="config.toml")
     args = parser.parse_args(args)
 
@@ -67,7 +80,9 @@ def cluster_install(args):
     args = parser.parse_args(args)
 
     config = load_config(args.config)
-    ClusterExecutor.execute_parallel(config, UbuntuCommand.install(args.program), args.cluster)
+    ClusterExecutor.execute_parallel(
+        config, command.Install().command(args.program), args.cluster,
+    )
 
 
 def cluster_uninstall(args):
@@ -79,7 +94,7 @@ def cluster_uninstall(args):
 
     config = load_config(args.config)
     ClusterExecutor.execute_parallel(
-        config, UbuntuCommand.uninstall(args.program), args.cluster
+        config, command.Uninstall().command(args.program), args.cluster,
     )
 
 
@@ -91,11 +106,15 @@ def postsync(args):
     args = parser.parse_args(args)
 
     config = load_config(args.config)
-    ClusterExecutor.execute_parallel(config, UbuntuCommand.update(sudo=True), args.cluster)
-    ClusterExecutor.execute_parallel(config, UbuntuCommand.upgrade(sudo=True), args.cluster)
+    ClusterExecutor.execute_parallel(
+        config, command.Update(sudo=True).command(), args.cluster,
+    )
+    ClusterExecutor.execute_parallel(
+        config, command.Upgrade(sudo=True).command(), args.cluster,
+    )
 
 
-def start(args):
+def run(args):
     parser = argparse.ArgumentParser(description='Install program on all nodes in a luster')
     parser.add_argument('cluster', action='store', help='Name of cluster to start program on')
     parser.add_argument('program', action='store', help='Name of program to start')
@@ -103,8 +122,9 @@ def start(args):
     args = parser.parse_args(args)
 
     config = load_config(args.config)
+    config = load_config(args.config)
     ClusterExecutor.execute_parallel(
-        config, UbuntuCommand.service_start(args.program), args.cluster
+        config, command.Start().command(args.program), args.cluster,
     )
 
 
@@ -117,7 +137,7 @@ def stop(args):
 
     config = load_config(args.config)
     ClusterExecutor.execute_parallel(
-        config, UbuntuCommand.service_stop(args.program), args.cluster
+        config, command.Stop().command(args.program), args.cluster,
     )
 
 
@@ -145,18 +165,42 @@ def copy(args):
     ClusterExecutor.copy_parallel(config, args.src, args.dest, args.cluster, recursive=args.r)
 
 
+def deploy(args):
+    parser = argparse.ArgumentParser(description='Deploy a given role')
+    parser.add_argument('role', action='store', help='Name of role')
+    parser.add_argument('--config', action='store', help='Specify path to config file', default="config.toml")
+    args = parser.parse_args(args)
+
+    config = load_config(args.config)
+    role = get_role_config(config, args.role)
+    tasks = role.get('tasks')
+    # Super naive command dependencies WOOOO
+    commands = sum(
+        (TaskRunner(config).commands_for_task(task) for task in tasks),
+        [],
+    )
+    commands = set(commands)
+    for command_ in commands:
+        ClusterExecutor.execute_parallel(
+            config,
+            command_,
+            role.get('clusters')[0]  # Support > 1
+        )
+
+
 action_to_handler = {
-    'syncall': sync_all_clusters,
-    'sync': sync_cluster,
-    'destroy': drop_cluster,
+    'up': start_cluster,
+    'down': stop_cluster,
+    'destroy': destroy_cluster,
     'info': cluster_info,
     'install': cluster_install,
     'uninstall': cluster_uninstall,
-    'start': start,
+    'run': run,
     'stop': stop,
     'postsync': postsync,
     'exec': execute,
     'copy': copy,
+    'deploy': deploy,
 }
 
 

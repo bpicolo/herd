@@ -1,6 +1,7 @@
 dist
 config.toml
 *.pyc
+__pycache__
 venv
 *.egg-info
-
+.tox

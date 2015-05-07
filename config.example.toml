@@ -27,3 +27,10 @@ ssh_keys = []
 region = 'sfo1'
 image = 'ubuntu-14-04-x64'
 
+[tasks.git]
+dependencies = 'apache'  # Dependencies for a task
+install = 'git'  # Commands the task should run
+
+[roles.app]
+clusters = ['app']  # Clusters to perform this role
+tasks = ['git']  # Tasks that are performed by this role

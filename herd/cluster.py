@@ -86,6 +86,10 @@ class DigitalOceanClusterManager(ClusterManager):
         self.manager = digitalocean.Manager(token=self.token)
         self.config = config
 
+    @property
+    def provider(self):
+        return 'digitalocean'
+
     def parse_config(self):
         pass
 
@@ -161,6 +165,9 @@ class DigitalOceanClusterManager(ClusterManager):
         for node in nodes:
             self.destroy_node(node)
 
+    def shutdown(self, node):
+        node.shutdown()
+
     def node_in_cluster(self, cluster):
         cluster_name_scheme = '{}\d+'.format(cluster)
         return [
@@ -194,7 +201,7 @@ class DigitalOceanClusterManager(ClusterManager):
     def list_clusters(self, cluster_name):
         pass
 
-    def drop_cluster(self, cluster_name):
+    def destroy_cluster(self, cluster_name):
         nodes_in_cluster = self.node_in_cluster(cluster_name)
 
         if not nodes_in_cluster:
@@ -252,7 +259,12 @@ class DigitalOceanClusterManager(ClusterManager):
             None
         )
 
-    def sync_cluster(self, cluster_name, cluster_config):
+    def stop_cluster(self, cluster_name, cluster_config):
+        nodes_in_cluster = self.node_in_cluster(cluster_name)
+        for node in nodes_in_cluster:
+            self.shutdown(node)
+
+    def start_cluster(self, cluster_name, cluster_config):
         print("Syncing cluster: {}".format(cluster_name))
         nodes_in_cluster = self.node_in_cluster(cluster_name)
         node_size_config = self.parse_node_size_config(cluster_config)
@@ -307,12 +319,25 @@ class DigitalOceanClusterManager(ClusterManager):
             )
             self.launch_node(node_configuration)
 
-        print("Cluster %s is in sync!" % cluster_name)
+        print("Cluster %s is operational!" % cluster_name)
 
-    def sync(self):
-        for cluster_name, cluster_config in self.config['clusters'].items():
-            if cluster_config['provider'] == 'digitalocean':
-                self.sync_cluster(cluster_name, cluster_config)
+    def start(self, cluster_name):
+        cluster_config = self.config['clusters'].get(cluster_name)
+        if not cluster_config:
+            print("Config not found for cluster %s " % cluster_name)
+        elif cluster_config['provider'] != self.provider:
+            print("The provider for %s is not %s" % (cluster_name, self.provider))
+        else:
+            self.start_cluster(cluster_name, cluster_config)
+
+    def stop(self, cluster_name):
+        cluster_config = self.config['clusters'].get(cluster_name)
+        if not cluster_config:
+            print("Config not found for cluster %s " % cluster_name)
+        elif cluster_config['provider'] != self.provider:
+            print("The provider for %s is not %s" % (cluster_name, self.provider))
+        else:
+            self.stop_cluster(cluster_name, cluster_config)
 
 
 PROVIDER_TO_CLUSTER_MANAGER = {
