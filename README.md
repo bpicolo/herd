@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/bpicolo/herd.svg?branch=master)](https://travis-ci.org/bpicolo/herd)
+
 # Herd
 
 Herd is an in-progress, easy-to-use framework for management
