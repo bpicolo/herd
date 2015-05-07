@@ -34,6 +34,6 @@ one good strategy for everything, to eliminate complicated configs.
         region = 'sfo1'
         image = 'ubuntu-14-04-x64'
 
-* herd syncall --config path/to/config  (default ./config.toml)
+* herd up cluster_name --config path/to/config  (default ./config.toml)
 * herd info cluster_name
-* herd install git
+* herd install cluster_name git
