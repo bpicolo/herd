@@ -156,7 +156,6 @@ class DigitalOceanClusterManager(ClusterManager):
     def destroy_node(self, node):
         if node.status == 'new':
             print("Can't destroy node {} yet, it's currently being created".format(node.name))
-            return
 
         print("Destroying node id:{} name:{}".format(node.id, node.name))
         node.destroy()
@@ -249,6 +248,9 @@ class DigitalOceanClusterManager(ClusterManager):
     def node_names(self, cluster_name):
         return [c['name'] for c in self.cluster_info(cluster_name)]
 
+    def name_for_node(self, cluster_name, idx):
+        return '{}{}'.format(cluster_name, idx)
+
     def ip_for_node(self, node_name):
         return next(
             (
@@ -265,50 +267,62 @@ class DigitalOceanClusterManager(ClusterManager):
             self.shutdown(node)
 
     def start_cluster(self, cluster_name, cluster_config):
-        print("Syncing cluster: {}".format(cluster_name))
+        """Refactor this. Gross"""
+        print('Syncing cluster: {}'.format(cluster_name))
         nodes_in_cluster = self.node_in_cluster(cluster_name)
         node_size_config = self.parse_node_size_config(cluster_config)
         node_size = self.best_node_size_match(**node_size_config)
+        desired_count = cluster_config['server_count']
+
+        if any(node.status == 'new' for node in nodes_in_cluster):
+            print(
+                'Can\'t modify cluster {} right now, '
+                'nodes currently spawning'.format(cluster_name)
+            )
 
         if not node_size:
             raise ClusterSyncException(
                 (
-                    "No valid node was found matching cores: {min_cores}, "
-                    "ram: {min_ram}mb, disk: {min_disk}gb, cost: ${max_monthly_cost}"
+                    'No valid node was found matching cores: {min_cores}, '
+                    'ram: {min_ram}mb, disk: {min_disk}gb, cost: ${max_monthly_cost}'
                 ).format(**node_size_config)
             )
 
-        nodes_to_sync = [
-            '{}{}'.format(cluster_name, i)
-            for i in range(1, 1 + cluster_config['server_count'])
-        ]
-
-        wrong_size_nodes = [
-            node for node in nodes_in_cluster if not
-            self.size_meets_requirements(
+        def destroy_nonmatching_node(node):
+            meets_size_requirements = self.size_meets_requirements(
                 self.size_for_slug(node.size_slug), **node_size_config
             )
-        ]
-        if wrong_size_nodes:
-            print("Destroying nodes that don't meet new size requirements")
-            self.destroy_nodes(wrong_size_nodes)
+            if not meets_size_requirements:
+                print(
+                    'Destroying node {} - doesn\'t meet size requirement'.format(
+                        node.name,
+                    )
+                )
+                self.destroy_node(node)
 
-        wrong_size_node_names = set(node.name for node in wrong_size_nodes)
+            return meets_size_requirements
 
-        extra_nodes = [
-            node for node in nodes_in_cluster if not
-            self.node_index(cluster_name, node.name) < cluster_config['server_count'] + 1
-        ]
-        self.destroy_nodes(extra_nodes)
+        # Remove nodes if they dont match size config & sort by name
+        nodes_in_cluster = list(sorted(
+            filter(destroy_nonmatching_node, nodes_in_cluster),
+            key=attrgetter('name'),
+        ))
 
-        nodes_to_create = (
-            set(nodes_to_sync) -
-            set(node.name for node in nodes_in_cluster) |
-            set(wrong_size_node_names)
-        )
-        for node_name in nodes_to_create:
+        if len(nodes_in_cluster) > desired_count:
+            print('Destroying extraneous nodes')
+            for node in nodes_in_cluster[desired_count:]:
+                self.destroy_node(node)
+            nodes_in_cluster == nodes_in_cluster[:desired_count]
+
+        # Rename nodes if nonsequential
+        for idx, node in enumerate(nodes_in_cluster, start=1):
+            name_for_node = self.name_for_node(cluster_name, idx)
+            if name_for_node != node.name:
+                self.rename_node(node, name_for_node)
+
+        for idx in range(len(nodes_in_cluster), desired_count):
             node_configuration = DigitalOceanNodeConfig(
-                name=node_name,
+                name=self.name_for_node(cluster_name, idx + 1),
                 region=cluster_config.get('region', self.default_region()),
                 size=self.best_node_size_match(**node_size_config).slug,
                 image=cluster_config.get('image', None),
@@ -319,23 +333,23 @@ class DigitalOceanClusterManager(ClusterManager):
             )
             self.launch_node(node_configuration)
 
-        print("Cluster %s is operational!" % cluster_name)
+        print('Cluster %s is operational!' % cluster_name)
 
     def start(self, cluster_name):
         cluster_config = self.config['clusters'].get(cluster_name)
         if not cluster_config:
-            print("Config not found for cluster %s " % cluster_name)
+            print('Config not found for cluster %s ' % cluster_name)
         elif cluster_config['provider'] != self.provider:
-            print("The provider for %s is not %s" % (cluster_name, self.provider))
+            print('The provider for %s is not %s' % (cluster_name, self.provider))
         else:
             self.start_cluster(cluster_name, cluster_config)
 
     def stop(self, cluster_name):
         cluster_config = self.config['clusters'].get(cluster_name)
         if not cluster_config:
-            print("Config not found for cluster %s " % cluster_name)
+            print('Config not found for cluster %s ' % cluster_name)
         elif cluster_config['provider'] != self.provider:
-            print("The provider for %s is not %s" % (cluster_name, self.provider))
+            print('The provider for %s is not %s' % (cluster_name, self.provider))
         else:
             self.stop_cluster(cluster_name, cluster_config)
 
