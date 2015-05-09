@@ -8,8 +8,7 @@ from herd import command
 from herd.cluster import cluster_manager_for_provider
 from herd.cluster import manager_for_cluster
 from herd.handler import ClusterExecutor
-from herd.role import get_role_config
-from herd.task import TaskRunner
+from herd.herd import Herd
 
 
 def load_config(config_path):
@@ -107,10 +106,10 @@ def postsync(args):
 
     config = load_config(args.config)
     ClusterExecutor.execute_parallel(
-        config, command.Update(sudo=True).command(), args.cluster,
+        config, [command.parse_command('update', None)], args.cluster,
     )
     ClusterExecutor.execute_parallel(
-        config, command.Upgrade(sudo=True).command(), args.cluster,
+        config, [command.parse_command('upgrade', None)], args.cluster,
     )
 
 
@@ -171,21 +170,8 @@ def deploy(args):
     parser.add_argument('--config', action='store', help='Specify path to config file', default="config.toml")
     args = parser.parse_args(args)
 
-    config = load_config(args.config)
-    role = get_role_config(config, args.role)
-    tasks = role.get('tasks')
-    # Super naive command dependencies WOOOO
-    commands = sum(
-        (TaskRunner(config).commands_for_task(task) for task in tasks),
-        [],
-    )
-    commands = set(commands)
-    for command_ in commands:
-        ClusterExecutor.execute_parallel(
-            config,
-            command_,
-            role.get('clusters')[0]  # Support > 1
-        )
+    herd = Herd(args.config)
+    herd.deploy(args.role)
 
 
 action_to_handler = {

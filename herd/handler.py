@@ -1,6 +1,5 @@
 from __future__ import print_function  # Sadly, fixes a flake8 issue
 
-import time
 from collections import namedtuple
 from concurrent import futures
 
@@ -14,43 +13,12 @@ from herd.cluster import manager_for_cluster
 class ClusterExecutor(namedtuple('ClusterExecutor', [])):
 
     @staticmethod
-    def wait_for_ready(manager, cluster_name):
-        cluster_status = manager.cluster_status(cluster_name)
-        waited = False
-        while(len(cluster_status['new']) > 0):
-            waited = True
-            print("Waiting for nodes to come online: {}".format(
-                [n.name for n in cluster_status['new']]
-            ))
-            time.sleep(10)
-            cluster_status = manager.cluster_status(cluster_name)
-
-        if waited:
-            print("Giving the cluster 15 seconds to cool down")
-            time.sleep(15)
-
-        if len(cluster_status['off']) or len(cluster_status['archive']):
-            nodes = [
-                n.name
-                for n in cluster_status['off'] + cluster_status['archive']
-            ]
-            print(
-                "WARNING: Some nodes are NOT online. The current commands ",
-                "will not be run for them"
-            )
-            print("Offline nodes: {}".format(nodes))
-
-    @staticmethod
-    def execute(command, config, manager, node):
-        handler = NodeHandler(config, manager, node)
-        print("Executing {} on {}".format(command, node))
-        handler.execute(command)
-
-    @staticmethod
-    def copy(src, dest, config, manager, node, recursive=False):
-        handler = NodeHandler(config, manager, node)
-        print("Copying {} to {} on {}".format(src, dest, node))
-        handler.copy(src, dest, recursive)
+    def execute(commands, config, manager, node):
+        handler = NodeHandler.connect(config, manager.ip_for_node(node))
+        for command in commands:
+            print("Executing {} on {}".format(command.command, node))
+            for out in command.run(handler):
+                print("{}: {}".format(node, out))
 
     @staticmethod
     def execute_parallel(config, command, cluster, max_workers=None):
@@ -58,7 +26,7 @@ class ClusterExecutor(namedtuple('ClusterExecutor', [])):
             max_workers = herd.config.parallel_connections(config) or 4
 
         manager = manager_for_cluster(config, cluster)
-        ClusterExecutor.wait_for_ready(manager, cluster)
+        manager.wait_for_ready(cluster)
         nodes = manager.node_names(cluster)
 
         if not nodes:
@@ -70,35 +38,12 @@ class ClusterExecutor(namedtuple('ClusterExecutor', [])):
                 for node in nodes
             }
             for future in futures.as_completed(future_to_node):
-                print("COMPLETED {} on {}".format(command, future_to_node[future]))
-
-    @staticmethod
-    def copy_parallel(config, src, dest, cluster, max_workers=None, recursive=False):
-        if not max_workers:
-            max_workers = herd.config.parallel_connections(config) or 4
-
-        manager = manager_for_cluster(config, cluster)
-        ClusterExecutor.wait_for_ready(manager, cluster)
-        nodes = manager.node_names(cluster)
-
-        if not nodes:
-            return
-
-        with futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_to_node = {
-                executor.submit(
-                    ClusterExecutor.copy, src, dest,
-                    config, manager, node, recursive=recursive
-                ): node
-                for node in nodes
-            }
-            for future in futures.as_completed(future_to_node):
-                print("COMPLETED copy {} to {} on {}".format(src, dest, future_to_node[future]))
+                print("COMPLETED commands on {}".format(future_to_node[future]))
 
 
 class NodeHandler(namedtuple(
     'NodeHandler',
-    ['client', 'cluster_manager', 'node_name'],
+    ['client', 'ip_address'],
 )):
     """
     A NodeHandler executes SSH commands against a machine.
@@ -111,29 +56,37 @@ class NodeHandler(namedtuple(
     :node_name: node name of node to talk to
     """
 
-    def __new__(cls, config, cluster_manager, node_name):
+    @classmethod
+    def connect(cls, config, ip_address):
         client = paramiko.SSHClient()
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         client.connect(
-            cluster_manager.ip_for_node(node_name),
+            ip_address,
             key_filename=config['ssh']['path'],
             password=config['ssh']['password'],
             username='root',  # TODO this is clearly suboptimal
         )
 
-        return super(NodeHandler, cls).__new__(cls, client, cluster_manager, node_name)
+        return cls(client, ip_address)
 
-    def print_stdout(self, stdout):
-        for line in stdout:
-            print("NODE {}: {}".format(self.node_name, line), end="")
 
-    def execute(self, command):
-        """Execute an arbitrary command on the cluster"""
-        print("Executing \"{}\" on {}".format(command, self.node_name))
-        _, stdout, stderr = self.client.exec_command(command)
-        self.print_stdout(stdout)
+def execute(handler, command):
+    """
+    :param client: NodeHandler
+    :command: string, command to execute on remote machine
+    """
+    _, stdout, stderr = handler.client.exec_command(command)
+    for line in stdout:
+        yield line.rstrip()
 
-    def copy(self, src, dest, recursive=False):
-        # Context manager doesnt work properly? try later -_-
-        scp = SCPClient(self.client.get_transport())
-        scp.put(src, dest, recursive=recursive)
+
+def copy(handler, src, dest, recursive=False):
+    """
+    :param client: NodeHandler
+    :param src: source file path (local)
+    :param dest: destination file path (remote)
+    :recursive: folder + all subfolders, files?
+    """
+    # Context manager doesnt work properly? try later -_-
+    scp = SCPClient(handler.client.get_transport())
+    scp.put(src, dest, recursive=recursive)

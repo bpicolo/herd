@@ -1,4 +1,5 @@
 import re
+import time
 from operator import attrgetter
 
 from cached_property import cached_property
@@ -352,6 +353,32 @@ class DigitalOceanClusterManager(ClusterManager):
             print('The provider for %s is not %s' % (cluster_name, self.provider))
         else:
             self.stop_cluster(cluster_name, cluster_config)
+
+    def wait_for_ready(self, cluster_name):
+        cluster_status = self.cluster_status(cluster_name)
+        waited = False
+        while(len(cluster_status['new']) > 0):
+            waited = True
+            print('Waiting for nodes to come online: {}'.format(
+                [n.name for n in cluster_status['new']]
+            ))
+            time.sleep(10)
+            cluster_status = self.cluster_status(cluster_name)
+
+        if waited:
+            print('Giving the cluster 15 seconds to cool down')
+            time.sleep(15)
+
+        if len(cluster_status['off']) or len(cluster_status['archive']):
+            nodes = [
+                n.name
+                for n in cluster_status['off'] + cluster_status['archive']
+            ]
+            print(
+                'WARNING: Some nodes are NOT online, and commands cannot ',
+                'be run on them'
+            )
+            print('Offline nodes: {}'.format(nodes))
 
 
 PROVIDER_TO_CLUSTER_MANAGER = {

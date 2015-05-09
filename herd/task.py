@@ -1,4 +1,5 @@
-from herd.command import COMMANDS
+from herd.command import parse_command
+from herd.handler import ClusterExecutor
 
 
 class TaskRunner(object):
@@ -13,12 +14,13 @@ class TaskRunner(object):
     def commands_for_task(self, task_name, sudo=False):
         config = self.task_config(task_name)
         dependencies = config.pop('dependencies', [])
-        commands = []
-        for key, value in config.items():
-            if key in COMMANDS:
-                commands.append(COMMANDS[key](sudo).command(value))
-            else:
-                print('Unrecognized command %s' % key)
+        commands = list(filter(
+            None,
+            [
+                parse_command(key, value, sudo)
+                for key, value in config.items()
+            ]
+        ))
 
         if isinstance(dependencies, str):
             dependencies = [dependencies]
@@ -28,3 +30,7 @@ class TaskRunner(object):
             commands += self.commands_for_task(dep, sudo)
 
         return commands
+
+    def execute_task(self, task, cluster, sudo=False):
+        commands = self.commands_for_task(task, sudo=sudo)
+        ClusterExecutor.execute_parallel(self.config, commands, cluster)

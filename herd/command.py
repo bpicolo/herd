@@ -1,3 +1,4 @@
+from herd import handler
 
 
 class Command(object):
@@ -13,8 +14,11 @@ class Command(object):
     def format(self):
         return '{}{}'.format('sudo ' if self.sudo else '', self._format)
 
-    def command(self, to_parse):
+    def parse(self, to_parse):
         raise NotImplementedError()
+
+    def run(self, node_handler):
+        return handler.execute(node_handler, self.command)
 
 
 class Install(Command):
@@ -23,11 +27,11 @@ class Install(Command):
     def _format(self):
         return "apt-get install -y {}"
 
-    def command(self, to_parse):
+    def parse(self, to_parse):
         if isinstance(to_parse, list):
-            return self.format.format(' '.join(str(s) for s in to_parse))
+            self.command = self.format.format(' '.join(str(s) for s in to_parse))
         else:
-            return self.format.format(to_parse)
+            self.command = self.format.format(to_parse)
 
 
 class Uninstall(Command):
@@ -36,11 +40,11 @@ class Uninstall(Command):
     def _format(self):
         return "apt-get remove -y {}"
 
-    def command(self, to_parse):
+    def parse(self, to_parse):
         if isinstance(to_parse, list):
-            return self.format.format(' '.join(str(s) for s in to_parse))
+            self.command = self.format.format(' '.join(str(s) for s in to_parse))
         else:
-            return self.format.format(to_parse)
+            self.command = self.format.format(to_parse)
 
 
 class Upgrade(Command):
@@ -49,8 +53,8 @@ class Upgrade(Command):
     def _format(self):
         return "apt-get upgrade -y"
 
-    def command(self):
-        return self.format()
+    def parse(self):
+        self.command = self._format
 
 
 class Update(Command):
@@ -61,8 +65,8 @@ class Update(Command):
             return "sudo apt-get update -y"
         return "apt-get update -y"
 
-    def command(self):
-        return self._format()
+    def parse(self):
+        self.command = self._format
 
 
 class Start(Command):
@@ -71,8 +75,8 @@ class Start(Command):
     def _format(self):
         return "service {} start"
 
-    def command(self, to_parse):
-        return self.format.format(to_parse)
+    def parse(self, to_parse):
+        self.command = self.format.format(to_parse)
 
 
 class Stop(Command):
@@ -81,8 +85,41 @@ class Stop(Command):
     def _format(self):
         return "service {} stop"
 
-    def command(self, to_parse):
-        return self.format.format(to_parse)
+    def parse(self, to_parse):
+        self.command = self.format.format(to_parse)
+
+
+class Copy(Command):
+    """ A more unique command :D Copy files via scp"""
+
+    @property
+    def _format(self):
+        raise NotImplementedError("""Copy via scp doesnt work this way""")
+
+    def parse(self, to_parse):
+        """
+        :param to_parse: a dict with two properties: src and dest
+        """
+        self.src = to_parse['src']
+        self.dest = to_parse['dest']
+        self.recursive = to_parse.get('recursive', False)
+        return self
+
+    def run(self, node_handler):
+        return handler.copy(node_handler, self.src, self.dest, self.recursive)
+
+
+def parse_command(key, value, sudo=False):
+    if key in ['update', 'upgrade']:
+        command = COMMANDS[key](sudo)
+        command.parse()
+        return command
+    if key in COMMANDS:
+        command = COMMANDS[key](sudo)
+        command.parse(value)
+        return command
+    else:
+        print('Unrecognized command %s' % key)
 
 
 COMMANDS = {
@@ -91,5 +128,6 @@ COMMANDS = {
     'update': Update,
     'upgrade': Upgrade,
     'install': Install,
-    'uninstall': Uninstall
+    'uninstall': Uninstall,
+    'copy': Copy,
 }
